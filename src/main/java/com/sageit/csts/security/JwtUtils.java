@@ -1,5 +1,7 @@
 package com.sageit.csts.security;
 
+import com.sageit.csts.repositories.BlacklistedTokenRepository;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -16,9 +18,11 @@ public class JwtUtils {
 
     @Value("${jwt.access.expiration-ms}")
     private long accessExpirationMs;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
 
-    public JwtUtils(@Value("${jwt.secret}") String secret) {
+    public JwtUtils(@Value("${jwt.secret}") String secret,BlacklistedTokenRepository blacklistedTokenRepository) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.blacklistedTokenRepository = blacklistedTokenRepository;
     }
 
     public String generateAccessToken(String username) {
@@ -43,6 +47,17 @@ public class JwtUtils {
             return true;
         } catch (JwtException e) {
             return false;
+        }
+    }
+
+    public Long getExpiryFromToken(String token) {
+        try {
+            Claims claims = Jwts.parserBuilder().setSigningKey(key).build()
+                    .parseClaimsJws(token)
+                    .getBody();
+            return claims.getExpiration().getTime(); // expiry in milliseconds
+        } catch (JwtException e) {
+            return null; // invalid token
         }
     }
 }

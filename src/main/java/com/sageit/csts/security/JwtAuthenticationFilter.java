@@ -1,5 +1,6 @@
 package com.sageit.csts.security;
 
+import com.sageit.csts.repositories.BlacklistedTokenRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,10 +17,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     private final CustomUserDetailsService userDetailsService;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
 
-    public JwtAuthenticationFilter(JwtUtils jwtUtils, CustomUserDetailsService uds) {
+    public JwtAuthenticationFilter(JwtUtils jwtUtils, CustomUserDetailsService uds,BlacklistedTokenRepository blacklistedTokenRepository) {
         this.jwtUtils = jwtUtils;
         this.userDetailsService = uds;
+        this.blacklistedTokenRepository = blacklistedTokenRepository;
     }
 
     @Override
@@ -28,6 +31,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
             String jwt = header.substring(7);
+
+            if (blacklistedTokenRepository.findByToken(jwt).isPresent()) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.getWriter().write("Token has been revoked. Please login again.");
+                return;
+            }
+
             if (jwtUtils.validateToken(jwt)) {
                 String username = jwtUtils.getUsernameFromToken(jwt);
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);

@@ -1,7 +1,9 @@
 package com.sageit.csts.controllers;
 
+import com.sageit.csts.entities.BlacklistedToken;
 import com.sageit.csts.entities.RefreshToken;
 import com.sageit.csts.entities.User;
+import com.sageit.csts.repositories.BlacklistedTokenRepository;
 import com.sageit.csts.repositories.UserRepository;
 import com.sageit.csts.security.JwtUtils;
 import com.sageit.csts.services.AuthService;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Map;
 
 @RestController
@@ -26,6 +30,7 @@ public class AuthController {
     private final AuthService authService;
     private final UserRepository userRepository;
     private final JwtUtils jwtUtils;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
 
     @Value("${app.refresh.cookie-name}")
     private String refreshCookieName;
@@ -36,10 +41,11 @@ public class AuthController {
     @Value("${app.refresh.http-only}")
     private boolean cookieHttpOnly;
 
-    public AuthController(AuthService authService, UserRepository userRepository, JwtUtils jwtUtils) {
+    public AuthController(AuthService authService, UserRepository userRepository, JwtUtils jwtUtils, BlacklistedTokenRepository blacklistedTokenRepository) {
         this.authService = authService;
         this.userRepository = userRepository;
         this.jwtUtils = jwtUtils;
+        this.blacklistedTokenRepository = blacklistedTokenRepository;
     }
 
     @PostMapping("/register")
@@ -93,6 +99,20 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            String jwt = header.substring(7);
+            try {
+                Long expiryMillis = jwtUtils.getExpiryFromToken(jwt);
+                LocalDateTime expiry = Instant.ofEpochMilli(expiryMillis)
+                        .atZone(ZoneId.systemDefault()).toLocalDateTime();
+                BlacklistedToken blacklistedToken = new BlacklistedToken(jwt, expiry);
+                blacklistedTokenRepository.save(blacklistedToken);
+            } catch (Exception ignored) {}
+        }
+
+
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie c : cookies) {

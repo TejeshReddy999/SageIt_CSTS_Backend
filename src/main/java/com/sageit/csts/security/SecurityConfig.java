@@ -1,5 +1,6 @@
 package com.sageit.csts.security;
 
+import com.sageit.csts.repositories.BlacklistedTokenRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,15 +22,21 @@ public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
     private final JwtUtils jwtUtils;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
 
-    public SecurityConfig(CustomUserDetailsService uds, JwtUtils jwtUtils) {
+    public SecurityConfig(CustomUserDetailsService uds, JwtUtils jwtUtils, BlacklistedTokenRepository blacklistedTokenRepository) {
         this.userDetailsService = uds;
         this.jwtUtils = jwtUtils;
+        this.blacklistedTokenRepository = blacklistedTokenRepository;
+    }
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter(jwtUtils, userDetailsService, blacklistedTokenRepository);
     }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtUtils, userDetailsService);
 
         http
                 .csrf().disable()
@@ -39,7 +46,9 @@ public class SecurityConfig {
                 .and()
                 .sessionManagement().disable();
 
-        http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+        // Use the filter bean
+        http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+
         http.headers().frameOptions().disable();
 
         return http.build();
@@ -66,5 +75,4 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-
 }
