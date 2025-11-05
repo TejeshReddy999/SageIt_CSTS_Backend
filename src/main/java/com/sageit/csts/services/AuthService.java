@@ -6,6 +6,8 @@ import com.sageit.csts.repositories.RefreshTokenRepository;
 import com.sageit.csts.repositories.RoleRepository;
 import com.sageit.csts.repositories.UserRepository;
 import com.sageit.csts.security.JwtUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,6 +20,8 @@ import java.util.UUID;
 
 @Service
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
@@ -41,11 +45,19 @@ public class AuthService {
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
+        logger.info("AuthService initialized");
     }
 
     public User register(String username, String email, String password) {
-        if (userRepository.existsByUsername(username)) throw new RuntimeException("Username taken");
-        if (userRepository.existsByEmail(email)) throw new RuntimeException("Email taken");
+        logger.info("Attempting to register user: {}", username);
+        if (userRepository.existsByUsername(username)) {
+            logger.warn("Username '{}' is already taken", username);
+            throw new RuntimeException("Username taken");
+        }
+        if (userRepository.existsByEmail(email)) {
+            logger.warn("Email '{}' is already taken", email);
+            throw new RuntimeException("Email taken");
+        }
 
         User user = new User();
         user.setUsername(username);
@@ -54,12 +66,18 @@ public class AuthService {
         var userRole = roleRepository.findByName("ROLE_USER")
                 .orElseThrow(() -> new RuntimeException("ROLE_USER not found"));
         user.setRoles(Set.of(userRole));
-        return userRepository.save(user);
+
+        User savedUser = userRepository.save(user);
+        logger.info("User '{}' registered successfully with ID {}", username, savedUser.getId());
+        return savedUser;
     }
 
     public String loginAndCreateAccessToken(String username, String password) {
-        var auth = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
-        return jwtUtils.generateAccessToken(username);
+        logger.info("Attempting login for user: {}", username);
+        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
+        String token = jwtUtils.generateAccessToken(username);
+        logger.info("Access token generated for user: {}", username);
+        return token;
     }
 
     public RefreshToken createRefreshToken(User user) {
@@ -68,24 +86,35 @@ public class AuthService {
         token.setExpiryDate(Instant.now().plusMillis(refreshExpirationMs));
         token.setToken(UUID.randomUUID().toString());
         token.setRevoked(false);
-        return refreshTokenRepository.save(token);
+        RefreshToken savedToken = refreshTokenRepository.save(token);
+        logger.info("Refresh token created for user: {}", user.getUsername());
+        return savedToken;
     }
 
     public RefreshToken verifyRefreshToken(String token) {
+        logger.debug("Verifying refresh token: {}", token);
         RefreshToken t = refreshTokenRepository.findByToken(token)
-                .orElseThrow(() -> new RuntimeException("Refresh token not found"));
+                .orElseThrow(() -> {
+                    logger.warn("Refresh token not found: {}", token);
+                    return new RuntimeException("Refresh token not found");
+                });
+
         if (t.isRevoked() || t.getExpiryDate().isBefore(Instant.now())) {
+            logger.warn("Refresh token expired or revoked for user: {}", t.getUser().getUsername());
             throw new RuntimeException("Refresh token expired or revoked");
         }
+        logger.debug("Refresh token verified for user: {}", t.getUser().getUsername());
         return t;
     }
 
     public void revokeRefreshToken(RefreshToken t) {
         t.setRevoked(true);
         refreshTokenRepository.save(t);
+        logger.info("Refresh token revoked for user: {}", t.getUser().getUsername());
     }
 
     public void revokeAllUserRefreshTokens(User user) {
         refreshTokenRepository.deleteByUser(user);
+        logger.info("All refresh tokens revoked for user: {}", user.getUsername());
     }
 }
