@@ -1,6 +1,8 @@
 package com.sageit.csts.security;
 
 import com.sageit.csts.repositories.BlacklistedTokenRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,6 +22,8 @@ import java.util.List;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
+    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+
     private final CustomUserDetailsService userDetailsService;
     private final JwtUtils jwtUtils;
     private final BlacklistedTokenRepository blacklistedTokenRepository;
@@ -28,15 +32,18 @@ public class SecurityConfig {
         this.userDetailsService = uds;
         this.jwtUtils = jwtUtils;
         this.blacklistedTokenRepository = blacklistedTokenRepository;
+        logger.info("SecurityConfig initialized with CustomUserDetailsService, JwtUtils, and BlacklistedTokenRepository");
     }
 
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        logger.info("Creating JwtAuthenticationFilter bean");
         return new JwtAuthenticationFilter(jwtUtils, userDetailsService, blacklistedTokenRepository);
     }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        logger.info("Configuring SecurityFilterChain");
 
         http
                 .csrf().disable()
@@ -48,31 +55,38 @@ public class SecurityConfig {
 
         // Use the filter bean
         http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+        logger.info("JwtAuthenticationFilter added to security filter chain");
 
         http.headers().frameOptions().disable();
+        logger.debug("Frame options disabled for H2 console");
 
         return http.build();
     }
 
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
+        logger.info("BCryptPasswordEncoder bean created");
         return new BCryptPasswordEncoder();
     }
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        logger.info("AuthenticationManager bean created");
         return config.getAuthenticationManager();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        logger.info("Configuring CORS");
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:3000")); // React app URL
         configuration.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true); // Important for cookies!
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
+        logger.debug("CORS configuration applied for all endpoints");
         return source;
     }
 }
